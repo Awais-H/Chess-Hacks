@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -22,13 +21,20 @@ async def get_move(request: Request):
     try:
         data = await request.json()
     except Exception as e:
-        return JSONResponse(content={"error": "Missing pgn or timeleft"}, status_code=400)
+        return JSONResponse(
+            content={"error": "Missing pgn or timeleft"}, status_code=400
+        )
 
-    if ("pgn" not in data or "timeleft" not in data):
-        return JSONResponse(content={"error": "Missing pgn or timeleft"}, status_code=400)
+    if "pgn" not in data or "timeleft" not in data:
+        return JSONResponse(
+            content={"error": "Missing pgn or timeleft"}, status_code=400
+        )
 
     pgn = data["pgn"]
-    timeleft = data["timeleft"]  # in milliseconds
+    timeleft = data["timeleft"]
+
+    if not pgn or pgn.strip() == "":
+        pgn = "*"
 
     chess_manager.set_context(pgn, timeleft)
     print("pgn", pgn)
@@ -52,18 +58,48 @@ async def get_move(request: Request):
             status_code=500,
         )
 
-    # Confirm type of move_probs
+    stockfish_move = None
+    if isinstance(move, tuple):
+        move, stockfish_move = move
+
     if not isinstance(move_probs, dict):
-        return JSONResponse(content={"move": None, "move_probs": None, "error": "Failed to get move", "message": "Move probabilities is not a dictionary"}, status_code=500)
+        return JSONResponse(
+            content={
+                "move": None,
+                "move_probs": None,
+                "error": "Failed to get move",
+                "message": "Move probabilities is not a dictionary",
+            },
+            status_code=500,
+        )
 
     for m, prob in move_probs.items():
         if not isinstance(m, chess.Move) or not isinstance(prob, float):
-            return JSONResponse(content={m: None, "move_probs": None, "error": "Failed to get move", "message": "Move probabilities is not a dictionary"}, status_code=500)
+            return JSONResponse(
+                content={
+                    m: None,
+                    "move_probs": None,
+                    "error": "Failed to get move",
+                    "message": "Move probabilities is not a dictionary",
+                },
+                status_code=500,
+            )
 
-    # Translate move_probs to Dict[str, float]
     move_probs_dict = {move.uci(): prob for move, prob in move_probs.items()}
 
-    return JSONResponse(content={"move": move.uci(), "error": None, "time_taken": time_taken, "move_probs": move_probs_dict, "logs": logs})
+    response_data = {
+        "move": move.uci(),
+        "error": None,
+        "time_taken": time_taken,
+        "move_probs": move_probs_dict,
+        "logs": logs,
+    }
+
+    if stockfish_move:
+        response_data["stockfish_move"] = stockfish_move.uci()
+
+    return JSONResponse(content=response_data)
+
 
 if __name__ == "__main__":
     port = int(os.getenv("SERVE_PORT", "5058"))
