@@ -55,9 +55,11 @@ def load_model():
         if model_path:
             try:
                 MODEL = ChessModel()
-                checkpoint = torch.load(model_path, map_location='cpu')
+                # auto-detect device (use GPU if available, otherwise CPU)
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                checkpoint = torch.load(model_path, map_location=device)
                 
-                # Handle different save formats
+                # handle different save formats
                 if isinstance(checkpoint, dict):
                     if 'model_state_dict' in checkpoint:
                         MODEL.load_state_dict(checkpoint['model_state_dict'])
@@ -68,8 +70,10 @@ def load_model():
                 else:
                     MODEL.load_state_dict(checkpoint)
                 
+                # move model to the appropriate device
+                MODEL = MODEL.to(device)
                 MODEL.eval()
-                print("Model loaded successfully")
+                print(f"Model loaded successfully on {device}")
                 return
             except Exception as e:
                 print(f"Model load failed: {e}")
@@ -91,6 +95,9 @@ def test_func(ctx: GameContext):
         if MODEL and MODEL is not False:
             with torch.no_grad():
                 board_tensor = board_to_tensor(ctx.board)
+                # move input to same device as model
+                device = next(MODEL.parameters()).device
+                board_tensor = board_tensor.to(device)
                 logits = MODEL(board_tensor)[0]
                 probs = torch.softmax(logits, dim=0)
                 
