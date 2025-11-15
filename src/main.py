@@ -123,6 +123,10 @@ def test_func(ctx: GameContext):
                     ctx.logProbabilities(move_probs)
                     best_move = max(move_probs, key=move_probs.get)
                     
+                    # Debug: print selected move
+                    promo_info = f" (promote to {chess.piece_name(best_move.promotion)})" if best_move.promotion else ""
+                    print(f"Bot selected: {best_move.uci()}{promo_info} (prob: {move_probs[best_move]:.4f})")
+                    
                     # verify the move is actually legal
                     if best_move in legal_moves:
                         return best_move
@@ -131,9 +135,13 @@ def test_func(ctx: GameContext):
     except Exception as e:
         print(f"Model inference failed: {e}")
     
+    # Fallback to random move
     move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
     ctx.logProbabilities(move_probs)
-    return random.choice(legal_moves)
+    fallback_move = random.choice(legal_moves)
+    promo_info = f" (promote to {chess.piece_name(fallback_move.promotion)})" if fallback_move.promotion else ""
+    print(f"Fallback random move: {fallback_move.uci()}{promo_info}")
+    return fallback_move
 
 
 @chess_manager.reset
