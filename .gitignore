@@ -4,5 +4,11 @@ venv
 .env.local
 .env
 devtools
+
 *.md
 !README.md
+
+*.pgn
+*.npy
+data/
+*.pth
