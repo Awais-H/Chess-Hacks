@@ -10,7 +10,7 @@ from huggingface_hub import hf_hub_download
 
 MODEL = None
 STOCKFISH_ENGINE = None
-HF_REPO_ID = "TheFamousHashbrown/chess_01"
+HF_REPO_ID = "ricfinity242/chess"
 
 
 def board_to_tensor(board):
