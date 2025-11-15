@@ -11,7 +11,7 @@ devtools
 *.pgn
 *.npy
 data/
-*.pth
+!models/*.pth  # Include model files in models/ directory
 
 .DS_Store
 .vscode/

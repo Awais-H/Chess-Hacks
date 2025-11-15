@@ -10,12 +10,6 @@ from huggingface_hub import hf_hub_download
 MODEL = None
 HF_REPO_ID = "ricfinity242/chess"
 
-# Pre-load model at module import time to avoid timeout during first move
-def _initialize_model():
-    """initialize model when module is imported."""
-    global MODEL
-    load_model()
-
 def board_to_tensor(board):
     """convert chess.Board to (1, 12, 8, 8) tensor"""
     array = np.zeros((8, 8, 12), dtype=np.float32)
@@ -39,19 +33,24 @@ def load_model():
     if MODEL is None:
         model_path = None
         
-        try:
-            print(f"Downloading model from HuggingFace: {HF_REPO_ID}")
-            model_path = hf_hub_download(
-                repo_id=HF_REPO_ID, 
-                filename="chess_model.pth",
-                cache_dir="./.model_cache"
-            )
-            print(f"Model cached at: {model_path}")
-        except Exception as e:
-            print(f"HuggingFace download failed: {e}")
-            if os.path.exists('models/chess_model.pth'):
-                model_path = 'models/chess_model.pth'
-                print("Using local fallback model")
+        # try local model first (fastest)
+        if os.path.exists('models/chess_model.pth'):
+            model_path = 'models/chess_model.pth'
+            print("Using local model from models/chess_model.pth")
+        else:
+            # Fallback to HuggingFace if local not available
+            try:
+                print(f"Local model not found, downloading from HuggingFace: {HF_REPO_ID}")
+                model_path = hf_hub_download(
+                    repo_id=HF_REPO_ID, 
+                    filename="chess_model.pth",
+                    cache_dir="./.model_cache",
+                    resume_download=True
+                )
+                print(f"Model downloaded/cached at: {model_path}")
+            except Exception as e:
+                print(f"HuggingFace download failed: {e}")
+                model_path = None
         
         if model_path:
             try:
@@ -80,7 +79,9 @@ def load_model():
 
 @chess_manager.entrypoint
 def test_func(ctx: GameContext):
-    # Model is already loaded at module import time
+    # Lazy load model on first call
+    load_model()
+    
     legal_moves = list(ctx.board.generate_legal_moves())
     if not legal_moves:
         ctx.logProbabilities({})
@@ -131,6 +132,3 @@ def reset_func(ctx: GameContext):
     # This gets called when a new game begins
     # Should do things like clear caches, reset model state, etc.
     pass
-
-# Initialize model when module is imported (before first move request)
-_initialize_model()
