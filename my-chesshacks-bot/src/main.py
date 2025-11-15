@@ -91,11 +91,28 @@ def test_func(ctx: GameContext):
                 move_probs = {}
                 for move in legal_moves:
                     move_idx = move.from_square * 64 + move.to_square
-                    move_probs[move] = probs[move_idx].item()
+                    prob = probs[move_idx].item()
+
+                    # prefer queen promotions by adding a small bonus
+                    # knight promotions by a small bonus
+                    # rook and bishop promotions get base probability
+                    if move.promotion:
+                        if move.promotion == chess.QUEEN:
+                            prob *= 1.5
+                        elif move.promotion == chess.KNIGHT:
+                            prob *= 1.2
+                    
+                    move_probs[move] = prob
                 
                 if move_probs:
                     ctx.logProbabilities(move_probs)
-                    return max(move_probs, key=move_probs.get)
+                    best_move = max(move_probs, key=move_probs.get)
+                    
+                    # verify the move is actually legal
+                    if best_move in legal_moves:
+                        return best_move
+                    else:
+                        print(f"Warning: Model selected illegal move {best_move}, falling back to random")
     except Exception as e:
         print(f"Model inference failed: {e}")
     
