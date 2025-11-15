@@ -10,7 +10,7 @@ from huggingface_hub import hf_hub_download
 
 MODEL = None
 STOCKFISH_ENGINE = None
-HF_REPO_ID = "TheFamousHashbrown/chess_01"
+HF_REPO_ID = "ricfinity242/chess"
 
 
 def board_to_tensor(board):
@@ -55,7 +55,19 @@ def load_model():
         if model_path:
             try:
                 MODEL = ChessModel()
-                MODEL.load_state_dict(torch.load(model_path, map_location="cpu"))
+                checkpoint = torch.load(model_path, map_location="cpu")
+
+                # Handle different save formats
+                if isinstance(checkpoint, dict):
+                    if "model_state_dict" in checkpoint:
+                        MODEL.load_state_dict(checkpoint["model_state_dict"])
+                    elif "state_dict" in checkpoint:
+                        MODEL.load_state_dict(checkpoint["state_dict"])
+                    else:
+                        MODEL.load_state_dict(checkpoint)
+                else:
+                    MODEL.load_state_dict(checkpoint)
+
                 MODEL.eval()
                 return
             except Exception as e:
