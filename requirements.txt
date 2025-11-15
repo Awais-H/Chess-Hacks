@@ -1,0 +1,5 @@
+# Core dependencies for chess bot
+python-chess>=1.9.0
+torch>=2.0.0,<3.0.0
+numpy>=1.24.0,<2.0.0
+huggingface-hub>=0.20.0
