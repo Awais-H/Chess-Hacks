@@ -5,11 +5,13 @@ import torch
 import chess
 import numpy as np
 import os
+from huggingface_hub import hf_hub_download
 
 MODEL = None
+HF_REPO_ID = os.getenv("HF_REPO_ID", "")
 
 def board_to_tensor(board):
-    """Convert chess.Board to (1, 12, 8, 8) tensor"""
+    """convert chess.Board to (1, 12, 8, 8) tensor"""
     array = np.zeros((8, 8, 12), dtype=np.float32)
     piece_to_channel = {chess.PAWN: 0, chess.KNIGHT: 1, chess.BISHOP: 2,
                         chess.ROOK: 3, chess.QUEEN: 4, chess.KING: 5}
@@ -29,14 +31,33 @@ def board_to_tensor(board):
 def load_model():
     global MODEL
     if MODEL is None:
-        try:
-            MODEL = ChessModel()
-            MODEL.load_state_dict(torch.load('models/chess_model.pth', map_location='cpu'))
-            MODEL.eval()
-            print("Model loaded successfully")
-        except:
-            print("Model not found, using random moves")
-            MODEL = False
+        model_path = None
+        
+        if HF_REPO_ID:
+            try:
+                print(f"Downloading model from HuggingFace: {HF_REPO_ID}")
+                model_path = hf_hub_download(repo_id=HF_REPO_ID, filename="chess_model.pth")
+                print(f"Model downloaded to: {model_path}")
+            except Exception as e:
+                print(f"HuggingFace download failed: {e}")
+        
+        if not model_path and os.path.exists('models/chess_model.pth'):
+            model_path = 'models/chess_model.pth'
+            print("Using local model")
+        
+        if model_path:
+            try:
+                MODEL = ChessModel()
+                MODEL.load_state_dict(torch.load(model_path, map_location='cpu'))
+                MODEL.eval()
+                print("Model loaded successfully")
+                return
+            except Exception as e:
+                print(f"Model load failed: {e}")
+        
+        print("No model available, using random moves")
+        print("Set HF_REPO_ID env var or place model at models/chess_model.pth")
+        MODEL = False
 
 @chess_manager.entrypoint
 def test_func(ctx: GameContext):
