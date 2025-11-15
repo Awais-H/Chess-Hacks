@@ -10,6 +10,12 @@ from huggingface_hub import hf_hub_download
 MODEL = None
 HF_REPO_ID = "ricfinity242/chess"
 
+# Pre-load model at module import time to avoid timeout during first move
+def _initialize_model():
+    """initialize model when module is imported."""
+    global MODEL
+    load_model()
+
 def board_to_tensor(board):
     """convert chess.Board to (1, 12, 8, 8) tensor"""
     array = np.zeros((8, 8, 12), dtype=np.float32)
@@ -74,8 +80,7 @@ def load_model():
 
 @chess_manager.entrypoint
 def test_func(ctx: GameContext):
-    load_model()
-    
+    # Model is already loaded at module import time
     legal_moves = list(ctx.board.generate_legal_moves())
     if not legal_moves:
         ctx.logProbabilities({})
@@ -126,3 +131,6 @@ def reset_func(ctx: GameContext):
     # This gets called when a new game begins
     # Should do things like clear caches, reset model state, etc.
     pass
+
+# Initialize model when module is imported (before first move request)
+_initialize_model()
