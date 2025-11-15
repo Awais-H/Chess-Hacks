@@ -55,8 +55,9 @@ def load_model():
         if model_path:
             try:
                 MODEL = ChessModel()
-                # auto-detect device (use GPU if available, otherwise CPU)
-                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                # Force CPU to avoid CUDA initialization timeout during deployment
+                # Small model doesn't benefit from GPU anyway
+                device = 'cpu'
                 checkpoint = torch.load(model_path, map_location=device)
                 
                 # handle different save formats
@@ -95,9 +96,7 @@ def test_func(ctx: GameContext):
         if MODEL and MODEL is not False:
             with torch.no_grad():
                 board_tensor = board_to_tensor(ctx.board)
-                # move input to same device as model
-                device = next(MODEL.parameters()).device
-                board_tensor = board_tensor.to(device)
+                # Model is on CPU, tensor is already on CPU (no device transfer needed)
                 logits = MODEL(board_tensor)[0]
                 probs = torch.softmax(logits, dim=0)
                 
