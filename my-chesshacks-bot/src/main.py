@@ -8,7 +8,7 @@ import os
 from huggingface_hub import hf_hub_download
 
 MODEL = None
-HF_REPO_ID = os.getenv("HF_REPO_ID", "")
+HF_REPO_ID = "TheFamousHashbrown/chess_01"
 
 def board_to_tensor(board):
     """convert chess.Board to (1, 12, 8, 8) tensor"""
@@ -33,17 +33,19 @@ def load_model():
     if MODEL is None:
         model_path = None
         
-        if HF_REPO_ID:
-            try:
-                print(f"Downloading model from HuggingFace: {HF_REPO_ID}")
-                model_path = hf_hub_download(repo_id=HF_REPO_ID, filename="chess_model.pth")
-                print(f"Model downloaded to: {model_path}")
-            except Exception as e:
-                print(f"HuggingFace download failed: {e}")
-        
-        if not model_path and os.path.exists('models/chess_model.pth'):
-            model_path = 'models/chess_model.pth'
-            print("Using local model")
+        try:
+            print(f"Downloading model from HuggingFace: {HF_REPO_ID}")
+            model_path = hf_hub_download(
+                repo_id=HF_REPO_ID, 
+                filename="chess_model.pth",
+                cache_dir="./.model_cache"
+            )
+            print(f"Model cached at: {model_path}")
+        except Exception as e:
+            print(f"HuggingFace download failed: {e}")
+            if os.path.exists('models/chess_model.pth'):
+                model_path = 'models/chess_model.pth'
+                print("Using local fallback model")
         
         if model_path:
             try:
@@ -56,7 +58,6 @@ def load_model():
                 print(f"Model load failed: {e}")
         
         print("No model available, using random moves")
-        print("Set HF_REPO_ID env var or place model at models/chess_model.pth")
         MODEL = False
 
 @chess_manager.entrypoint
