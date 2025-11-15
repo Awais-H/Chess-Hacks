@@ -1,10 +1,13 @@
+import os
+# Disable CUDA before importing torch to prevent GPU initialization
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
 from .utils import chess_manager, GameContext
 from .model import ChessModel
 import random
 import torch
 import chess
 import numpy as np
-import os
 from huggingface_hub import hf_hub_download
 
 MODEL = None
