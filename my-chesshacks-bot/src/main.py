@@ -117,20 +117,12 @@ def get_stockfish_move(board):
     if STOCKFISH_ENGINE and STOCKFISH_ENGINE is not False:
         try:
             result = STOCKFISH_ENGINE.play(board, chess.engine.Limit(time=0.1))
-            print(f"Stockfish move: {result.move}")
             return result.move
         except Exception as e:
-            print(f"ERROR - Stockfish failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-    else:
-        print("ERROR - Stockfish engine not loaded")
+            print(f"Stockfish error: {e}")
 
     legal_moves = list(board.legal_moves)
-    random_move = random.choice(legal_moves) if legal_moves else None
-    print(f"FALLBACK - Random move: {random_move}")
-    return random_move
+    return random.choice(legal_moves) if legal_moves else None
 
 
 @chess_manager.entrypoint
@@ -159,22 +151,17 @@ def test_func(ctx: GameContext):
                 move_probs = {}
                 for move in legal_moves:
                     move_idx = move.from_square * 64 + move.to_square
-                    if move_idx < len(probs):
-                        prob = probs[move_idx].item()
-
-                        if move.promotion:
-                            if move.promotion == chess.QUEEN:
-                                prob *= 1.5
-                            elif move.promotion == chess.KNIGHT:
-                                prob *= 1.2
-
-                        move_probs[move] = prob
-                    else:
-                        move_probs[move] = 0.0
+                    move_probs[move] = probs[move_idx].item()
 
                 if move_probs:
                     ctx.logProbabilities(move_probs)
                     model_move = max(move_probs, key=move_probs.get)
+
+                    if model_move not in legal_moves:
+                        print(
+                            f"Model selected illegal move: {model_move}, using random"
+                        )
+                        model_move = random.choice(legal_moves)
 
                     ctx.board.push(model_move)
 
@@ -185,13 +172,9 @@ def test_func(ctx: GameContext):
                             return (model_move, stockfish_move)
 
                     return model_move
-        else:
-            print("ERROR: Model not loaded!")
     except Exception as e:
         print(f"Model error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        pass
 
     move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
     ctx.logProbabilities(move_probs)
@@ -200,4 +183,6 @@ def test_func(ctx: GameContext):
 
 @chess_manager.reset
 def reset_func(ctx: GameContext):
+    # This gets called when a new game begins
+    # Should do things like clear caches, reset model state, etc.
     pass
