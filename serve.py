@@ -25,6 +25,14 @@ print("[STARTUP] chess_manager imported", file=sys.stderr, flush=True)
 from src import main
 print("[STARTUP] main module imported", file=sys.stderr, flush=True)
 
+# Pre-load model at startup to avoid timeout on first request
+print("[STARTUP] Pre-loading model...", file=sys.stderr, flush=True)
+try:
+    main.load_model()
+    print("[STARTUP] Model pre-loaded successfully", file=sys.stderr, flush=True)
+except Exception as e:
+    print(f"[STARTUP] Model pre-load failed: {e}", file=sys.stderr, flush=True)
+
 app = FastAPI()
 
 
@@ -47,13 +55,16 @@ async def get_move(request: Request):
     timeleft = data["timeleft"]  # in milliseconds
 
     chess_manager.set_context(pgn, timeleft)
-    print("pgn", pgn)
+    print("pgn", pgn, file=sys.stderr, flush=True)
+    print(f"[MOVE_REQUEST] timeleft={timeleft}ms", file=sys.stderr, flush=True)
 
     try:
         start_time = time.perf_counter()
+        print(f"[MOVE_REQUEST] Calling get_model_move...", file=sys.stderr, flush=True)
         move, move_probs, logs = chess_manager.get_model_move()
         end_time = time.perf_counter()
         time_taken = (end_time - start_time) * 1000
+        print(f"[MOVE_REQUEST] Move generated in {time_taken:.2f}ms", file=sys.stderr, flush=True)
     except Exception as e:
         time_taken = (time.perf_counter() - start_time) * 1000
         return JSONResponse(
