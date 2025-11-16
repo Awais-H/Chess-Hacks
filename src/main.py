@@ -105,24 +105,19 @@ def load_model():
     if MODEL is None:
         model_path = None
         
-        # try local model first (fastest)
-        if os.path.exists('models/chess_model.pth'):
-            model_path = 'models/chess_model.pth'
-            print("Using local model from models/chess_model.pth")
-        else:
-            # Fallback to HuggingFace if local not available
-            try:
-                print(f"Local model not found, downloading from HuggingFace: {HF_REPO_ID}")
-                model_path = hf_hub_download(
-                    repo_id=HF_REPO_ID, 
-                    filename="chess_model.pth",
-                    cache_dir="./.model_cache",
-                    resume_download=True
-                )
-                print(f"Model downloaded/cached at: {model_path}")
-            except Exception as e:
-                print(f"HuggingFace download failed: {e}")
-                model_path = None
+        # Download chess_model_v2.pth from HuggingFace
+        try:
+            print(f"Downloading chess_model_v2.pth from HuggingFace: {HF_REPO_ID}")
+            model_path = hf_hub_download(
+                repo_id=HF_REPO_ID, 
+                filename="chess_model_v2.pth",
+                cache_dir="./.model_cache",
+                resume_download=True
+            )
+            print(f"Model downloaded/cached at: {model_path}")
+        except Exception as e:
+            print(f"HuggingFace download failed: {e}")
+            model_path = None
         
         if model_path:
             try:
