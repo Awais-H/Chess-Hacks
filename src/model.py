@@ -1,7 +1,6 @@
 import os
 # ensure CUDA is disabled (set in main.py but being explicit here too)
-os.environ.setdefault('CUDA_VISIBLE_DEVICES', '')
-
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 import torch
 import torch.nn as nn
 
