@@ -1,10 +1,12 @@
+import os
+# CRITICAL: Disable CUDA before any torch imports to prevent GPU initialization timeout
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 import time
 import chess
-import os
 
 from src.utils import chess_manager
 from src import main
