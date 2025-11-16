@@ -3,7 +3,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 from .utils import chess_manager, GameContext
-from .model import ChessModel
+from .model import ChessModelV1, ChessModelV2
 import random
 import torch
 import chess
@@ -13,11 +13,49 @@ from huggingface_hub import hf_hub_download
 MODEL = None
 HF_REPO_ID = "ricfinity242/chess"
 
-def board_to_tensor(board):
-    """convert chess.Board to (1, 12, 8, 8) tensor"""
-    array = np.zeros((8, 8, 12), dtype=np.float32)
-    piece_to_channel = {chess.PAWN: 0, chess.KNIGHT: 1, chess.BISHOP: 2,
-                        chess.ROOK: 3, chess.QUEEN: 4, chess.KING: 5}
+# Standard piece values (centipawns) for material evaluation
+PIECE_VALUES = {
+    chess.PAWN: 1.0,
+    chess.KNIGHT: 3.0,
+    chess.BISHOP: 3.25,
+    chess.ROOK: 5.0,
+    chess.QUEEN: 9.0,
+    chess.KING: 0.0  # King is invaluable
+}
+
+def board_to_tensor(board, include_piece_values=True):
+    """
+    Convert chess.Board to enhanced tensor representation.
+    
+    Channels:
+    0-5: White pieces (P, N, B, R, Q, K)
+    6-11: Black pieces (P, N, B, R, Q, K)
+    12: White kingside castling
+    13: White queenside castling
+    14: Black kingside castling
+    15: Black queenside castling
+    16: En passant target square
+    17: Turn (1 for white, 0 for black)
+    18: Material advantage (normalized) [optional]
+    
+    Returns:
+        Tensor of shape (1, 19, 8, 8) or (1, 18, 8, 8)
+    """
+    num_channels = 19 if include_piece_values else 18
+    array = np.zeros((8, 8, num_channels), dtype=np.float32)
+    
+    piece_to_channel = {
+        chess.PAWN: 0,
+        chess.KNIGHT: 1,
+        chess.BISHOP: 2,
+        chess.ROOK: 3,
+        chess.QUEEN: 4,
+        chess.KING: 5
+    }
+    
+    # Piece positions (channels 0-11)
+    white_material = 0.0
+    black_material = 0.0
     
     for square in chess.SQUARES:
         piece = board.piece_at(square)
@@ -25,9 +63,40 @@ def board_to_tensor(board):
             rank = chess.square_rank(square)
             file = chess.square_file(square)
             channel = piece_to_channel[piece.piece_type]
-            if piece.color == chess.BLACK:
-                channel += 6
-            array[rank, file, channel] = 1.0
+            
+            if piece.color == chess.WHITE:
+                array[rank, file, channel] = 1.0
+                white_material += PIECE_VALUES[piece.piece_type]
+            else:
+                array[rank, file, channel + 6] = 1.0
+                black_material += PIECE_VALUES[piece.piece_type]
+    
+    # Castling rights (channels 12-15)
+    if board.has_kingside_castling_rights(chess.WHITE):
+        array[:, :, 12] = 1.0
+    if board.has_queenside_castling_rights(chess.WHITE):
+        array[:, :, 13] = 1.0
+    if board.has_kingside_castling_rights(chess.BLACK):
+        array[:, :, 14] = 1.0
+    if board.has_queenside_castling_rights(chess.BLACK):
+        array[:, :, 15] = 1.0
+    
+    # En passant (channel 16)
+    if board.ep_square is not None:
+        ep_rank = chess.square_rank(board.ep_square)
+        ep_file = chess.square_file(board.ep_square)
+        array[ep_rank, ep_file, 16] = 1.0
+    
+    # Turn (channel 17)
+    if board.turn == chess.WHITE:
+        array[:, :, 17] = 1.0
+    
+    # Material advantage (channel 18) - normalized
+    if include_piece_values:
+        material_diff = white_material - black_material
+        # Normalize to roughly [-1, 1] (queen advantage is ~9)
+        normalized_material = np.tanh(material_diff / 10.0)
+        array[:, :, 18] = normalized_material
     
     return torch.FloatTensor(array).permute(2, 0, 1).unsqueeze(0)
 
@@ -57,24 +126,37 @@ def load_model():
         
         if model_path:
             try:
-                MODEL = ChessModel()
                 # Force CPU to avoid CUDA initialization timeout during deployment
-                # Small model doesn't benefit from GPU anyway
                 device = 'cpu'
                 checkpoint = torch.load(model_path, map_location=device)
                 
-                # handle different save formats
+                # Extract state_dict from different save formats
                 if isinstance(checkpoint, dict):
                     if 'model_state_dict' in checkpoint:
-                        MODEL.load_state_dict(checkpoint['model_state_dict'])
+                        state_dict = checkpoint['model_state_dict']
                     elif 'state_dict' in checkpoint:
-                        MODEL.load_state_dict(checkpoint['state_dict'])
+                        state_dict = checkpoint['state_dict']
                     else:
-                        MODEL.load_state_dict(checkpoint)
+                        state_dict = checkpoint
                 else:
-                    MODEL.load_state_dict(checkpoint)
+                    state_dict = checkpoint
                 
-                # move model to the appropriate device
+                # Auto-detect model version based on first conv layer input channels
+                if 'conv1.weight' in state_dict:
+                    # V1 model (simple CNN with 12 input channels)
+                    input_channels = state_dict['conv1.weight'].shape[1]
+                    print(f"Detected V1 model with {input_channels} input channels")
+                    MODEL = ChessModelV1()
+                elif 'conv_input.weight' in state_dict:
+                    # V2 model (enhanced with 19 input channels)
+                    input_channels = state_dict['conv_input.weight'].shape[1]
+                    use_piece_values = (input_channels == 19)
+                    print(f"Detected V2 model with {input_channels} input channels")
+                    MODEL = ChessModelV2(use_piece_values=use_piece_values)
+                else:
+                    raise ValueError("Unknown model architecture")
+                
+                MODEL.load_state_dict(state_dict)
                 MODEL = MODEL.to(device)
                 MODEL.eval()
                 print(f"Model loaded successfully on {device}")
@@ -98,7 +180,16 @@ def test_func(ctx: GameContext):
     try:
         if MODEL and MODEL is not False:
             with torch.no_grad():
-                board_tensor = board_to_tensor(ctx.board)
+                # Use appropriate tensor format based on model version
+                if isinstance(MODEL, ChessModelV1):
+                    # V1 model expects 12 channels (pieces only)
+                    board_tensor = board_to_tensor(ctx.board, include_piece_values=False)
+                    # Extract only the piece channels (0-11)
+                    board_tensor = board_tensor[:, :12, :, :]
+                else:
+                    # V2 model expects 19 channels (pieces + game state + material)
+                    board_tensor = board_to_tensor(ctx.board, include_piece_values=True)
+                
                 # Model is on CPU, tensor is already on CPU (no device transfer needed)
                 logits = MODEL(board_tensor)[0]
                 probs = torch.softmax(logits, dim=0)
