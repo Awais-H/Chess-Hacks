@@ -1,6 +1,15 @@
 import os
+import sys
+
 # CRITICAL: Disable CUDA before any torch imports to prevent GPU initialization timeout
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
+# Also disable other CUDA-related environment variables
+os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
+os.environ['TORCH_CUDA_ARCH_LIST'] = ''
+
+# Debug: Print environment before imports
+print(f"[STARTUP] CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}", file=sys.stderr, flush=True)
+print(f"[STARTUP] Python version: {sys.version}", file=sys.stderr, flush=True)
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -8,8 +17,13 @@ import uvicorn
 import time
 import chess
 
+print("[STARTUP] FastAPI and chess imported", file=sys.stderr, flush=True)
+
 from src.utils import chess_manager
+print("[STARTUP] chess_manager imported", file=sys.stderr, flush=True)
+
 from src import main
+print("[STARTUP] main module imported", file=sys.stderr, flush=True)
 
 app = FastAPI()
 

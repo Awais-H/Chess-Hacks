@@ -34,13 +34,23 @@ def board_to_tensor(board):
 def load_model():
     global MODEL
     if MODEL is None:
+        import sys
+        print("[LOAD_MODEL] Starting model load...", file=sys.stderr, flush=True)
         model_path = None
         
         # try local model first (fastest)
-        if os.path.exists('models/chess_model.pth'):
-            model_path = 'models/chess_model.pth'
-            print("Using local model from models/chess_model.pth")
-        else:
+        local_paths = ['models/chess_model.pth', './models/chess_model.pth', '../models/chess_model.pth']
+        model_path = None
+        
+        print(f"[LOAD_MODEL] Checking local paths: {local_paths}", file=sys.stderr, flush=True)
+        for path in local_paths:
+            if os.path.exists(path):
+                model_path = path
+                print(f"Using local model from {path}")
+                print(f"[LOAD_MODEL] Found model at {path}", file=sys.stderr, flush=True)
+                break
+        
+        if not model_path:
             # Fallback to HuggingFace if local not available
             try:
                 print(f"Local model not found, downloading from HuggingFace: {HF_REPO_ID}")
@@ -48,7 +58,8 @@ def load_model():
                     repo_id=HF_REPO_ID, 
                     filename="chess_model.pth",
                     cache_dir="./.model_cache",
-                    resume_download=True
+                    resume_download=True,
+                    local_files_only=False  # Allow network download
                 )
                 print(f"Model downloaded/cached at: {model_path}")
             except Exception as e:
@@ -57,11 +68,23 @@ def load_model():
         
         if model_path:
             try:
-                MODEL = ChessModel()
+                import sys
+                print(f"[LOAD_MODEL] Loading checkpoint from {model_path}...", file=sys.stderr, flush=True)
+                
                 # Force CPU to avoid CUDA initialization timeout during deployment
                 # Small model doesn't benefit from GPU anyway
-                device = 'cpu'
-                checkpoint = torch.load(model_path, map_location=device)
+                device = torch.device('cpu')
+                print(f"[LOAD_MODEL] Using device: {device}", file=sys.stderr, flush=True)
+                
+                # Load checkpoint to CPU first (prevents CUDA initialization)
+                print(f"[LOAD_MODEL] Calling torch.load...", file=sys.stderr, flush=True)
+                checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+                print(f"[LOAD_MODEL] Checkpoint loaded", file=sys.stderr, flush=True)
+                
+                # Create model on CPU
+                print(f"[LOAD_MODEL] Creating ChessModel...", file=sys.stderr, flush=True)
+                MODEL = ChessModel()
+                print(f"[LOAD_MODEL] Model created", file=sys.stderr, flush=True)
                 
                 # handle different save formats
                 if isinstance(checkpoint, dict):
