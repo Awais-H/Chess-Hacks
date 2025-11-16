@@ -101,8 +101,7 @@ def load_stockfish():
         for path in stockfish_paths:
             try:
                 STOCKFISH_ENGINE = chess.engine.SimpleEngine.popen_uci(path)
-                STOCKFISH_ENGINE.configure({"Skill Level": 10})
-                print(f"Stockfish loaded from: {path}")
+                STOCKFISH_ENGINE.configure({"Skill Level": 1})
                 return
             except:
                 continue
@@ -112,30 +111,43 @@ def load_stockfish():
 
 
 def get_stockfish_move(board):
+    """Get a move from Stockfish"""
     load_stockfish()
 
     if STOCKFISH_ENGINE and STOCKFISH_ENGINE is not False:
         try:
-            result = STOCKFISH_ENGINE.play(board, chess.engine.Limit(time=0.1))
+            # Very short time + depth 1 for weak play
+            result = STOCKFISH_ENGINE.play(
+                board, chess.engine.Limit(time=0.01, depth=1)
+            )
             return result.move
         except Exception as e:
             print(f"Stockfish error: {e}")
 
+    # Fallback to random
     legal_moves = list(board.legal_moves)
     return random.choice(legal_moves) if legal_moves else None
 
 
 @chess_manager.entrypoint
 def test_func(ctx: GameContext):
+    """
+    Universal chess bot that alternates between Stockfish (white) and your model (black)
+    """
     load_model()
 
-    if len(list(ctx.board.move_stack)) == 0:
-        stockfish_move = get_stockfish_move(ctx.board)
-        if stockfish_move:
-            ctx.board.push(stockfish_move)
-            ctx.logProbabilities({})
-            return stockfish_move
+    # Determine whose turn based on move count
+    move_count = len(list(ctx.board.move_stack))
+    is_white_turn = move_count % 2 == 0
 
+    # White = Stockfish
+    if is_white_turn:
+        move = get_stockfish_move(ctx.board)
+        ctx.logProbabilities({})
+        print(f"[WHITE - STOCKFISH] Move {move_count + 1}: {move}")
+        return move
+
+    # Black = Your Model
     legal_moves = list(ctx.board.generate_legal_moves())
     if not legal_moves:
         ctx.logProbabilities({})
@@ -151,38 +163,47 @@ def test_func(ctx: GameContext):
                 move_probs = {}
                 for move in legal_moves:
                     move_idx = move.from_square * 64 + move.to_square
-                    move_probs[move] = probs[move_idx].item()
+                    prob = probs[move_idx].item()
+
+                    # Promotion bonus
+                    if move.promotion:
+                        if move.promotion == chess.QUEEN:
+                            prob *= 1.5
+                        elif move.promotion == chess.KNIGHT:
+                            prob *= 1.2
+
+                    move_probs[move] = prob
 
                 if move_probs:
                     ctx.logProbabilities(move_probs)
                     model_move = max(move_probs, key=move_probs.get)
 
-                    if model_move not in legal_moves:
+                    if model_move in legal_moves:
                         print(
-                            f"Model selected illegal move: {model_move}, using random"
+                            f"[BLACK - MODEL] Move {move_count + 1}: {model_move} (prob: {move_probs[model_move]:.4f})"
                         )
-                        model_move = random.choice(legal_moves)
-
-                    ctx.board.push(model_move)
-
-                    if not ctx.board.is_game_over():
-                        stockfish_move = get_stockfish_move(ctx.board)
-                        if stockfish_move:
-                            ctx.board.push(stockfish_move)
-                            return (model_move, stockfish_move)
-
-                    return model_move
+                        return model_move
+                    else:
+                        print(
+                            f"[BLACK - MODEL] ERROR: Selected illegal move {model_move}"
+                        )
+        else:
+            print("[BLACK - MODEL] ERROR: Model not loaded, using random move")
     except Exception as e:
-        print(f"Model error: {e}")
-        pass
+        print(f"[BLACK - MODEL] ERROR: {e}")
+        import traceback
 
+        traceback.print_exc()
+
+    # Fallback to random move
     move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
     ctx.logProbabilities(move_probs)
-    return random.choice(legal_moves)
+    fallback = random.choice(legal_moves)
+    print(f"[BLACK - MODEL] Fallback random: {fallback}")
+    return fallback
 
 
 @chess_manager.reset
 def reset_func(ctx: GameContext):
-    # This gets called when a new game begins
-    # Should do things like clear caches, reset model state, etc.
+    """Called when a new game begins"""
     pass
