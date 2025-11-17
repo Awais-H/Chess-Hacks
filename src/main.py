@@ -38,33 +38,20 @@ def load_model():
         print("[LOAD_MODEL] Starting model load...", file=sys.stderr, flush=True)
         model_path = None
         
-        # try local model first (fastest)
-        local_paths = ['models/chess_model.pth', './models/chess_model.pth', '../models/chess_model.pth']
-        model_path = None
-        
-        print(f"[LOAD_MODEL] Checking local paths: {local_paths}", file=sys.stderr, flush=True)
-        for path in local_paths:
-            if os.path.exists(path):
-                model_path = path
-                print(f"Using local model from {path}")
-                print(f"[LOAD_MODEL] Found model at {path}", file=sys.stderr, flush=True)
-                break
-        
-        if not model_path:
-            # Fallback to HuggingFace if local not available
-            try:
-                print(f"Local model not found, downloading from HuggingFace: {HF_REPO_ID}")
-                model_path = hf_hub_download(
-                    repo_id=HF_REPO_ID, 
-                    filename="chess_model.pth",
-                    cache_dir="./.model_cache",
-                    resume_download=True,
-                    local_files_only=False  # Allow network download
-                )
-                print(f"Model downloaded/cached at: {model_path}")
-            except Exception as e:
-                print(f"HuggingFace download failed: {e}")
-                model_path = None
+        # Always use HuggingFace download method
+        try:
+            print(f"Downloading from HuggingFace: {HF_REPO_ID}")
+            model_path = hf_hub_download(
+                repo_id=HF_REPO_ID, 
+                filename="chess_model.pth",
+                cache_dir="./.model_cache",
+                resume_download=True,
+                local_files_only=False  # Allow network download
+            )
+            print(f"Model downloaded/cached at: {model_path}")
+        except Exception as e:
+            print(f"HuggingFace download failed: {e}")
+            model_path = None
         
         if model_path:
             try:
